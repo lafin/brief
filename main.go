@@ -2,9 +2,15 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	_ "image/png" // register the PNG format with the image package
 	"math"
 	"math/rand"
+	"os"
 	"time"
+
+	"github.com/lafin/fast"
 )
 
 func getDescriptors(pixels []int, width int, keypoints []int, count int) []int {
@@ -14,18 +20,18 @@ func getDescriptors(pixels []int, width int, keypoints []int, count int) []int {
 	position := 0
 
 	for i := 0; i < len(keypoints); i += 2 {
-		var w = width*keypoints[i+1] + keypoints[i]
+		w := width*keypoints[i+1] + keypoints[i]
 
-		var offsetsPosition = 0
+		offsetsPosition := 0
 		for j := 0; j < count; j++ {
 			offsetsPosition += 2
-			if pixels[offsets[offsetsPosition-1]+w] < pixels[offsets[offsetsPosition]+w] {
+			if pixels[offsets[offsetsPosition-2]+w] < pixels[offsets[offsetsPosition-1]+w] {
 				descriptorWord |= 1 << (uint(j) & 31)
 			}
 
 			if ((j + 1) & 31) == 0 {
-				position++
 				descriptors[position] = descriptorWord
+				position++
 				descriptorWord = 0
 			}
 		}
@@ -91,35 +97,22 @@ func reciprocalMatch(keypoints1, descriptors1, keypoints2, descriptors2 []int, c
 }
 
 func getRandomOffsets(width int, count int) []int {
-	var randomWindowOffsets []int
-	if randomWindowOffsets == nil {
-		var windowPosition = 0
-		windowOffsets := make([]int, 4*count)
-		for i := 0; i < count; i++ {
-			windowPosition++
-			windowOffsets[windowPosition] = uniformRandom(-15, 16)
-			windowPosition++
-			windowOffsets[windowPosition] = uniformRandom(-15, 16)
-			windowPosition++
-			windowOffsets[windowPosition] = uniformRandom(-15, 16)
-			windowPosition++
-			windowOffsets[windowPosition] = uniformRandom(-15, 16)
-		}
-		randomWindowOffsets = windowOffsets
+	randomWindowOffsets := make([]int, 4*count)
+	for i := 0; i < 4*count; i++ {
+		randomWindowOffsets[i] = uniformRandom(-15, 16)
 	}
 
 	randomImageOffsets := make(map[int][]int)
 	if _, ok := randomImageOffsets[width]; !ok {
-		var imagePosition = 0
 		imageOffsets := make([]int, 2*count)
-		for j := 0; j < count; j++ {
+		imagePosition := 0
+		for i := 0; i < count; i++ {
+			imageOffsets[imagePosition] = randomWindowOffsets[4*i]*width + randomWindowOffsets[4*i+1]
 			imagePosition++
-			imageOffsets[imagePosition] = randomWindowOffsets[4*j]*width + randomWindowOffsets[4*j+1]
+			imageOffsets[imagePosition] = randomWindowOffsets[4*i+2]*width + randomWindowOffsets[4*i+3]
 			imagePosition++
-			imageOffsets[imagePosition] = randomWindowOffsets[4*j+2]*width + randomWindowOffsets[4*j+3]
 		}
 		randomImageOffsets[width] = imageOffsets
-
 	}
 
 	return randomImageOffsets[width]
@@ -144,6 +137,53 @@ func round(val float64) int {
 	return int(val + 0.5)
 }
 
+func toGray(path string) ([]int, int, int) {
+	infile, err := os.Open(path)
+	if err != nil {
+		// replace this with real error handling
+		panic(err)
+	}
+	defer infile.Close()
+
+	// Decode will figure out what type of image is in the file on its own.
+	// We just have to be sure all the image packages we want are imported.
+	src, _, err := image.Decode(infile)
+	if err != nil {
+		// replace this with real error handling
+		panic(err)
+	}
+
+	// Create a new grayscale image
+	bounds := src.Bounds()
+	w, h := bounds.Max.X, bounds.Max.Y
+	gray := image.NewGray(image.Rectangle{image.Point{0, 0}, image.Point{w, h}})
+	for x := 0; x < w; x++ {
+		for y := 0; y < h; y++ {
+			oldColor := src.At(x, y)
+			grayColor := color.GrayModel.Convert(oldColor)
+			gray.Set(x, y, grayColor)
+		}
+	}
+
+	pixList := make([]int, w*h)
+	for index := 0; index < w*h; index++ {
+		pixList[index] = int(gray.Pix[index])
+	}
+
+	return pixList, w, h
+}
+
 func main() {
+	pixList1, width1, height1 := toGray("image_1.png")
+	corners1 := fast.FindCorners(pixList1, width1, height1, 20)
+	descriptors1 := getDescriptors(pixList1, width1, corners1, 512)
+
+	pixList2, width2, height2 := toGray("image_2.png")
+	corners2 := fast.FindCorners(pixList2, width2, height2, 20)
+	descriptors2 := getDescriptors(pixList2, width2, corners2, 512)
+
+	matches := reciprocalMatch(corners1, descriptors1, corners2, descriptors2, 512)
+	fmt.Println(matches)
+
 	fmt.Println("done")
 }
