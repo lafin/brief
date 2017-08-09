@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lafin/fast"
+	"github.com/tajtiattila/blur"
 )
 
 func getDescriptors(pixels []int, width int, keypoints []int, count int) []int {
@@ -130,14 +131,7 @@ func uniformRandom(a, b int) int {
 	return rand.Intn(b-a) + a
 }
 
-func round(val float64) int {
-	if val < 0 {
-		return int(val - 0.5)
-	}
-	return int(val + 0.5)
-}
-
-func toGray(path string) ([]int, int, int) {
+func toGray(path string) (*image.Gray, int, int) {
 	infile, err := os.Open(path)
 	if err != nil {
 		// replace this with real error handling
@@ -153,37 +147,48 @@ func toGray(path string) ([]int, int, int) {
 		panic(err)
 	}
 
+	src = blur.Gaussian(src, 2, blur.ReuseSrc)
+
 	// Create a new grayscale image
 	bounds := src.Bounds()
-	w, h := bounds.Max.X, bounds.Max.Y
-	gray := image.NewGray(image.Rectangle{image.Point{0, 0}, image.Point{w, h}})
-	for x := 0; x < w; x++ {
-		for y := 0; y < h; y++ {
+	width, height := bounds.Max.X, bounds.Max.Y
+	gray := image.NewGray(image.Rectangle{image.Point{0, 0}, image.Point{width, height}})
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
 			oldColor := src.At(x, y)
 			grayColor := color.GrayModel.Convert(oldColor)
 			gray.Set(x, y, grayColor)
 		}
 	}
 
-	pixList := make([]int, w*h)
-	for index := 0; index < w*h; index++ {
+	return gray, width, height
+}
+
+func grayImageToPixList(gray *image.Gray, width, height int) []int {
+	pixList := make([]int, width*height)
+	for index := 0; index < width*height; index++ {
 		pixList[index] = int(gray.Pix[index])
 	}
 
-	return pixList, w, h
+	return pixList
 }
 
 func main() {
-	pixList1, width1, height1 := toGray("image_1.png")
+	gray1, width1, height1 := toGray("image_1.png")
+	pixList1 := grayImageToPixList(gray1, width1, height1)
 	corners1 := fast.FindCorners(pixList1, width1, height1, 20)
-	descriptors1 := getDescriptors(pixList1, width1, corners1, 512)
+	descriptors1 := getDescriptors(pixList1, width1, corners1, 256)
 
-	pixList2, width2, height2 := toGray("image_2.png")
+	gray2, width2, height2 := toGray("image_2.png")
+	pixList2 := grayImageToPixList(gray2, width2, height2)
 	corners2 := fast.FindCorners(pixList2, width2, height2, 20)
-	descriptors2 := getDescriptors(pixList2, width2, corners2, 512)
+	descriptors2 := getDescriptors(pixList2, width2, corners2, 256)
 
-	matches := reciprocalMatch(corners1, descriptors1, corners2, descriptors2, 512)
-	fmt.Println(matches)
+	fmt.Println(len(corners1), width1, height1)
+	matches := reciprocalMatch(corners1, descriptors1, corners2, descriptors2, 256)
+	for _, match := range matches {
+		fmt.Println(match.index1, match.index2, match.keypoint1, match.keypoint2, match.confidence)
+	}
 
 	fmt.Println("done")
 }
