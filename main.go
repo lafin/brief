@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/lafin/fast"
+	"github.com/steakknife/hamming"
 	"github.com/tajtiattila/blur"
 )
 
-func getDescriptors(pixels []int, width int, keypoints []int, count int) []int {
+func getDescriptors(pixels []int, width int, keypoints []int, randomWindowOffsets []int, randomImageOffsets *map[int][]int, count int) []int {
 	descriptors := make([]int, (len(keypoints)>>1)*(count>>5))
-	offsets := getRandomOffsets(width, count)
+	offsets := getRandomOffsets(randomWindowOffsets, randomImageOffsets, width, count)
 	descriptorWord := 0
 	position := 0
 
@@ -47,7 +48,7 @@ type Point struct {
 	index2     int
 	keypoint1  [2]int
 	keypoint2  [2]int
-	confidence int
+	confidence float32
 }
 
 func match(keypoints1, descriptors1, keypoints2, descriptors2 []int, count int) []Point {
@@ -56,25 +57,26 @@ func match(keypoints1, descriptors1, keypoints2, descriptors2 []int, count int) 
 	matches := make([]Point, len1)
 
 	for i := 0; i < len1; i++ {
-		min := math.MaxInt8
+		min := math.MaxInt32
 		minj := 0
 		for j := 0; j < len2; j++ {
 			dist := 0
 			n := count >> 5
 			for k := 0; k < n; k++ {
-				dist += hammingWeight(descriptors1[i*n+k] ^ descriptors2[j*n+k])
+				dist += hamming.CountBitsInt(descriptors1[i*n+k] ^ descriptors2[j*n+k])
 			}
 			if dist < min {
 				min = dist
 				minj = j
 			}
 		}
+
 		matches[i] = Point{
 			index1:     i,
 			index2:     minj,
 			keypoint1:  [2]int{keypoints1[2*i], keypoints1[2*i+1]},
 			keypoint2:  [2]int{keypoints2[2*minj], keypoints2[2*minj+1]},
-			confidence: 1 - min/count,
+			confidence: 1.0 - float32(min)/float32(count),
 		}
 	}
 
@@ -89,6 +91,7 @@ func reciprocalMatch(keypoints1, descriptors1, keypoints2, descriptors2 []int, c
 
 	var matches1 = match(keypoints1, descriptors1, keypoints2, descriptors2, count)
 	var matches2 = match(keypoints2, descriptors2, keypoints1, descriptors1, count)
+
 	for i := 0; i < len(matches1); i++ {
 		if matches2[matches1[i].index2].index2 == i {
 			matches = append(matches, matches1[i])
@@ -97,14 +100,8 @@ func reciprocalMatch(keypoints1, descriptors1, keypoints2, descriptors2 []int, c
 	return matches
 }
 
-func getRandomOffsets(width int, count int) []int {
-	randomWindowOffsets := make([]int, 4*count)
-	for i := 0; i < 4*count; i++ {
-		randomWindowOffsets[i] = uniformRandom(-15, 16)
-	}
-
-	randomImageOffsets := make(map[int][]int)
-	if _, ok := randomImageOffsets[width]; !ok {
+func getRandomOffsets(randomWindowOffsets []int, randomImageOffsets *map[int][]int, width int, count int) []int {
+	if _, ok := (*randomImageOffsets)[width]; !ok {
 		imageOffsets := make([]int, 2*count)
 		imagePosition := 0
 		for i := 0; i < count; i++ {
@@ -113,17 +110,10 @@ func getRandomOffsets(width int, count int) []int {
 			imageOffsets[imagePosition] = randomWindowOffsets[4*i+2]*width + randomWindowOffsets[4*i+3]
 			imagePosition++
 		}
-		randomImageOffsets[width] = imageOffsets
+		(*randomImageOffsets)[width] = imageOffsets
 	}
 
-	return randomImageOffsets[width]
-}
-
-func hammingWeight(i int) int {
-	i = i - ((i >> 1) & 0x55555555)
-	i = (i & 0x33333333) + ((i >> 2) & 0x33333333)
-
-	return ((i + (i>>4)&0xF0F0F0F) * 0x1010101) >> 24
+	return (*randomImageOffsets)[width]
 }
 
 func uniformRandom(a, b int) int {
@@ -174,18 +164,28 @@ func grayImageToPixList(gray *image.Gray, width, height int) []int {
 }
 
 func main() {
+	count := 256
+	randomWindowOffsets := make([]int, 4*count)
+	for i := 0; i < 4*count; i++ {
+		randomWindowOffsets[i] = uniformRandom(-15, 16)
+	}
+	randomImageOffsets := make(map[int][]int)
+
 	gray1, width1, height1 := toGray("image_1.png")
-	pixList1 := grayImageToPixList(gray1, width1, height1)
-	corners1 := fast.FindCorners(pixList1, width1, height1, 20)
-	descriptors1 := getDescriptors(pixList1, width1, corners1, 256)
-
 	gray2, width2, height2 := toGray("image_2.png")
+	pixList1 := grayImageToPixList(gray1, width1, height1)
 	pixList2 := grayImageToPixList(gray2, width2, height2)
-	corners2 := fast.FindCorners(pixList2, width2, height2, 20)
-	descriptors2 := getDescriptors(pixList2, width2, corners2, 256)
 
-	fmt.Println(len(corners1), width1, height1)
-	matches := reciprocalMatch(corners1, descriptors1, corners2, descriptors2, 256)
+	pixList1, pixList2 = getImages()
+	width1, height1 = getSizes()
+	width2, height2 = getSizes()
+
+	corners1 := fast.FindCorners(pixList1, width1, height1, 40)
+	descriptors1 := getDescriptors(pixList1, width1, corners1, randomWindowOffsets, &randomImageOffsets, count)
+	corners2 := fast.FindCorners(pixList2, width2, height2, 40)
+	descriptors2 := getDescriptors(pixList2, width2, corners2, randomWindowOffsets, &randomImageOffsets, count)
+
+	matches := reciprocalMatch(corners1, descriptors1, corners2, descriptors2, count)
 	for _, match := range matches {
 		fmt.Println(match.index1, match.index2, match.keypoint1, match.keypoint2, match.confidence)
 	}
