@@ -30,11 +30,11 @@ var count = 256
 
 // Point - struct of point
 type Point struct {
-	index1     int
-	index2     int
-	keypoint1  [2]int
-	keypoint2  [2]int
-	confidence float32
+	Index1     int
+	Index2     int
+	Keypoint1  [2]int
+	Keypoint2  [2]int
+	Confidence float32
 }
 
 func uniformRandom(a, b int) int {
@@ -100,11 +100,11 @@ func match(keypoints1, descriptors1, keypoints2, descriptors2 []int) []Point {
 		}
 
 		matches[i] = Point{
-			index1:     i,
-			index2:     minj,
-			keypoint1:  [2]int{keypoints1[2*i], keypoints1[2*i+1]},
-			keypoint2:  [2]int{keypoints2[2*minj], keypoints2[2*minj+1]},
-			confidence: 1.0 - float32(min)/float32(count),
+			Index1:     i,
+			Index2:     minj,
+			Keypoint1:  [2]int{keypoints1[2*i], keypoints1[2*i+1]},
+			Keypoint2:  [2]int{keypoints2[2*minj], keypoints2[2*minj+1]},
+			Confidence: 1.0 - float32(min)/float32(count),
 		}
 	}
 
@@ -168,7 +168,7 @@ func ReciprocalMatch(keypoints1, descriptors1, keypoints2, descriptors2 []int) [
 	var matches2 = match(keypoints2, descriptors2, keypoints1, descriptors1)
 
 	for i := 0; i < len(matches1); i++ {
-		if matches2[matches1[i].index2].index2 == i {
+		if matches2[matches1[i].Index2].Index2 == i {
 			matches = append(matches, matches1[i])
 		}
 	}
