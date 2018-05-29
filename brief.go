@@ -122,7 +122,7 @@ func InitOffsets() []int {
 }
 
 // GetDescriptors - Generates a binary string for each found keypoints extracted using an extractor method.
-func GetDescriptors(pixels []int, width int, keypoints []int, randomWindowOffsets []int) []int {
+func GetDescriptors(pixels map[int]int, width int, keypoints []int, randomWindowOffsets []int) []int {
 	// Optimizing divide by 32 operation using binary shift
 	// (count >> 5) === count/32.
 	descriptors := make([]int, (len(keypoints)>>1)*(count>>5))
