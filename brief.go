@@ -4,6 +4,7 @@
  * method.
  */
 
+// Package brief - implementation of the algorithm of the same name
 package brief
 
 import (
@@ -121,8 +122,8 @@ func InitOffsets() []int {
 	return randomWindowOffsets
 }
 
-// GetDescriptors - Generates a binary string for each found keypoints extracted using an extractor method.
-func GetDescriptors(pixels map[int]int, width int, keypoints []int, randomWindowOffsets []int) []int {
+// GetDescriptors - generates a binary string for each found keypoints extracted using an extractor method.
+func GetDescriptors(pixels map[int]int, width int, keypoints, randomWindowOffsets []int) []int {
 	// Optimizing divide by 32 operation using binary shift
 	// (count >> 5) === count/32.
 	descriptors := make([]int, (len(keypoints)>>1)*(count>>5))
